@@ -23,7 +23,7 @@ conf = None
 logger = None
 
 def load_config():
-    """Loads configuration from 'cspaperbot.conf' and returns it."""
+    """Loads configuration from 'cspaperbot.conf' to conf."""
     global conf
     try:
         with open(conf_file, 'r') as f:
@@ -43,35 +43,50 @@ def login():
         logger.error(e)
 
 def reply_to(comment, body):
-    """Reply to given comment with given text. Appends postfix automatically."""
+    """Reply to given comment with given text, if reply is set to True. Appends postfix automatically."""
     if conf['reply']:
         logger.info('Commented on ' + comment.id + ":\n" + body)
         comment.reply(body + '  \n' + postfix)
 
 def open_issue(title, submitter, context, note, label):
-    return g.create_issue(conf['repo_owner'], conf['repository'], title, body = issue_body.format(submitter, context, note), labels = label).html_url
+    """Creates issue on github and returns url."""
+    return g.create_issue(conf['repo_owner'],
+            conf['repository'],
+            title,
+            body = issue_body.format(submitter, context, note),
+            labels = label).html_url
+
+def act_on_mention(message):
+    """Acts on a username mention."""
+    logging.info('Acting on mention', message)
+    label = []
+    line = re.search(regex_line.format(conf['username']), message.body)
+    if line:
+        line = line.group(1)
+        if '?' in line:
+            label = ['question']
+    else:
+        logger.error('Regex wrong', line)
+
+    title = message.submission.title
+    if message.is_root:
+        context = message.submission.permalink
+    else:
+        title = message.author.name + ' on ' + title
+        #Because PRAW is inconsistent
+        context = message.permalink + '?context=3'
+    reply_to(message,
+            open_issue(title, message.author, context, line, label))
 
 def check_messages():
+    """Checks messages and handles accordingly."""
     for message in r.get_unread():
         if 'username mention' in message.subject:
-            label = []
-            line = re.search(regex_line.format(conf['username']), message.body)
-            if line:
-                line = line.group(1)
-                if '?' in line:
-                    label = ['question']
-            else:
-                logger.error('Regex wrong', line)
-
-            title = message.submission.title
-            if message.is_root:
-                context = message.submission.permalink
-            else:
-                title = message.author.name + ' on ' + title
-                #Because PRAW is inconsistent
-                context = message.permalink + '?context=3'
-            reply_to(message, open_issue(title, message.author, context, line, label))
-            message.mark_as_read()
+            try:
+                act_on_mention(message)
+                message.mark_as_read()
+            except Exception as e:
+                logging.error(e)
     logger.info('Unread processed')
 
 def main():
@@ -91,7 +106,9 @@ def main():
 
     load_config()
     login()
+
     check_messages()
+
     r.clear_authentication()
 
 if __name__ == "__main__":
