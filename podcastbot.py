@@ -14,6 +14,8 @@ conf_file = 'podcastbot.conf'
 issue_body = "Submitted by: [{0}](https://reddit.com/u/{0})\nContext: {1}\nNote: {2}"
 postfix = ''
 
+regex_line = '/u/{} (.+)'
+
 #globals
 r = None
 g = None
@@ -42,8 +44,9 @@ def login():
 
 def reply_to(comment, body):
     """Reply to given comment with given text. Appends postfix automatically."""
-    logger.info('Commented on ' + comment.id + ":\n" + body)
-    comment.reply(body + '  \n' + postfix)
+    if conf['reply']:
+        logger.info('Commented on ' + comment.id + ":\n" + body)
+        comment.reply(body + '  \n' + postfix)
 
 def open_issue(title, submitter, context, note):
     return g.create_issue(conf['repo_owner'], conf['repository'], title, body = issue_body.format(submitter, context, note)).html_url
@@ -51,7 +54,12 @@ def open_issue(title, submitter, context, note):
 def check_messages():
     for message in r.get_unread():
         if 'username mention' in message.subject:
-            line = re.search('/u/' + conf['username'] + ' (.+) {,2}\n{1,2}', message.body)
+            line = re.search(regex_line.format(conf['username']), message.body)
+            if line:
+                line = line.group(1)
+            else:
+                logger.error('Regex wrong', line)
+
             title = message.submission.title
             if message.is_root:
                 context = message.submission.permalink
