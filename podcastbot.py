@@ -48,15 +48,18 @@ def reply_to(comment, body):
         logger.info('Commented on ' + comment.id + ":\n" + body)
         comment.reply(body + '  \n' + postfix)
 
-def open_issue(title, submitter, context, note):
-    return g.create_issue(conf['repo_owner'], conf['repository'], title, body = issue_body.format(submitter, context, note)).html_url
+def open_issue(title, submitter, context, note, label):
+    return g.create_issue(conf['repo_owner'], conf['repository'], title, body = issue_body.format(submitter, context, note), labels = label).html_url
 
 def check_messages():
     for message in r.get_unread():
         if 'username mention' in message.subject:
+            label = []
             line = re.search(regex_line.format(conf['username']), message.body)
             if line:
                 line = line.group(1)
+                if '?' in line:
+                    label = ['question']
             else:
                 logger.error('Regex wrong', line)
 
@@ -64,10 +67,10 @@ def check_messages():
             if message.is_root:
                 context = message.submission.permalink
             else:
-                title = message.author + ' on ' + title
+                title = message.author.name + ' on ' + title
                 #Because PRAW is inconsistent
                 context = message.permalink + '?context=3'
-            reply_to(message, open_issue(title, message.author, context, line))
+            reply_to(message, open_issue(title, message.author, context, line, label))
             message.mark_as_read()
     logger.info('Unread processed')
 
